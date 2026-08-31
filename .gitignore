@@ -1,0 +1,17 @@
+# Carpetas de compilación e IDEs
+/build/
+/bin/
+/obj/
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Archivos ejecutables y binarios
+*.exe
+*.out
+*.app
+*.o
+*.obj
+*.pdb
+*.ilk
