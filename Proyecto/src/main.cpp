@@ -2,13 +2,10 @@
 #include <GLFW/glfw3.h>
 #include <vector>
 #include <iostream>
-
-
-#include"shaderClass.h"
-#include"VAO.h"
-#include"VBO.h"
-#include"EBO.h"
-
+#include "shaderClass.h"
+#include "VAO.h"
+#include "VBO.h"
+#include "EBO.h"
 
 int main()
 {
@@ -43,19 +40,46 @@ int main()
     const float STEP = 0.1f; // Medida mínima del cuadrado (0.1 en espacio NDC [-1, 1])
     std::vector<GLfloat> gridVertices;
 
-    // Crear líneas verticales y horizontales
+    // OPCIÓN 1: LÍNEAS HORIZONTALES Y VERTICALES CONTINUAS
     for (float pos = -1.0f; pos <= 1.0f + 0.0001f; pos += STEP)
     {
         // Línea Vertical (x constante, va de y=-1 a y=1)
-        // Posición (x, y, z)                   // Color R, G, B (Gris)
         gridVertices.push_back(pos);   gridVertices.push_back(-1.0f); gridVertices.push_back(0.0f);   gridVertices.push_back(0.4f); gridVertices.push_back(0.4f); gridVertices.push_back(0.4f);
         gridVertices.push_back(pos);   gridVertices.push_back(1.0f);  gridVertices.push_back(0.0f);   gridVertices.push_back(0.4f); gridVertices.push_back(0.4f); gridVertices.push_back(0.4f);
 
         // Línea Horizontal (y constante, va de x=-1 a x=1)
-        // Posición (x, y, z)                   // Color R, G, B (Gris)
         gridVertices.push_back(-1.0f); gridVertices.push_back(pos);   gridVertices.push_back(0.0f);   gridVertices.push_back(0.4f); gridVertices.push_back(0.4f); gridVertices.push_back(0.4f);
         gridVertices.push_back(1.0f);  gridVertices.push_back(pos);   gridVertices.push_back(0.0f);   gridVertices.push_back(0.4f); gridVertices.push_back(0.4f); gridVertices.push_back(0.4f);
     }
+
+    /*
+    // OPCIÓN 2: GENERACIÓN CUADRADO POR CUADRADO INDEPENDIENTE
+    for (float x = -1.0f; x < 1.0f - 0.0001f; x += STEP)
+    {
+        for (float y = -1.0f; y < 1.0f - 0.0001f; y += STEP)
+        {
+            float xNext = x + STEP;
+            float yNext = y + STEP;
+            float r = 0.4f, g = 0.4f, b = 0.4f;
+
+            // Lado Inferior
+            gridVertices.push_back(x);     gridVertices.push_back(y);     gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
+            gridVertices.push_back(xNext); gridVertices.push_back(y);     gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
+
+            // Lado Derecho
+            gridVertices.push_back(xNext); gridVertices.push_back(y);     gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
+            gridVertices.push_back(xNext); gridVertices.push_back(yNext); gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
+
+            // Lado Superior
+            gridVertices.push_back(xNext); gridVertices.push_back(yNext); gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
+            gridVertices.push_back(x);     gridVertices.push_back(yNext); gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
+
+            // Lado Izquierdo
+            gridVertices.push_back(x);     gridVertices.push_back(yNext); gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
+            gridVertices.push_back(x);     gridVertices.push_back(y);     gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
+        }
+    }
+    */
 
 
     //GLfloat vertices[] = {  //matriz de vertices con posicion -1<< x,y <<+1
@@ -89,7 +113,7 @@ int main()
     //};
 
     Shader shaderProgram("Shaders/default.vert", "Shaders/default.frag");
-  
+
 
     // Genera un objeto de matriz de vértices (VAO) y lo vincula
     VAO VAO1;
