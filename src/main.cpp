@@ -7,7 +7,7 @@
 #include "VBO.h"
 #include "EBO.h"
 
-// --- CONFIGURACIÓN Y ESTRUCTURA PARA PÍXELES INDEPENDIENTES ---
+// confiuracion de pixeles independientes 
 const int GRID_COLS = 40; // Número de columnas (eje X)
 const int GRID_ROWS = 40; // Número de filas (eje Y)
 
@@ -18,7 +18,7 @@ struct PixelColor {
 // Matriz para modificar el color de cada píxel de forma independiente
 PixelColor pixelGrid[GRID_ROWS][GRID_COLS];
 
-// Función para cambiar el color de un píxel específico (columna, fila) a tu gusto
+// Función para cambiar el color de un píxel específico (columna, fila)
 void setPixelColor(int col, int row, float r, float g, float b) {
     if (col >= 0 && col < GRID_COLS && row >= 0 && row < GRID_ROWS) {
         pixelGrid[row][col] = { r, g, b };
@@ -30,7 +30,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     glViewport(0, 0, width, height);
 }
 
-// --- FUNCIÓN BRESENHAM PARA LÍNEAS  ---
+// funcion BRESENHAM para lineas
 void drawLineBresenham(int x0, int y0, int x1, int y1, float r, float g, float b) {
     int dx = abs(x1 - x0);
     int dy = abs(y1 - y0);
@@ -91,14 +91,14 @@ int main()
 
     glViewport(0, 0, 800, 800); //area de renderizado de la ventana x=0, y=0, a x=800, y=800 
 
-    // --- INICIALIZACIÓN DE COLORES BASE DE CADA PÍXEL ---
+    // inicializacion de colores base de cada pixel
     for (int r = 0; r < GRID_ROWS; ++r) {
         for (int c = 0; c < GRID_COLS; ++c) {
             pixelGrid[r][c] = { 0.2f, 0.2f, 0.2f }; // Color base gris oscuro
         }
     }
 
-    // Dibuja una línea roja desde el píxel (x1, y1) hasta el píxel (x2, y2)
+    // funcin de dibujado de línea desde el píxel (x1, y1) hasta el píxel (x2, y2)
     drawLineBresenham(10, 10, 19, 19, 1.0f, 0.0f, 0.0f);
 
     // --- MODIFICA AQUÍ CUALQUIER PÍXEL A TU GUSTO (Ejemplos) ---
