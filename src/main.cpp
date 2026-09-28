@@ -59,6 +59,41 @@ void drawLineBresenham(int x0, int y0, int x1, int y1, float r, float g, float b
     }
 }
 
+// Función auxiliar para pintar los 8 octantes simétricos
+void drawCircle8Points(int xc, int yc, int x, int y, float r, float g, float b) {
+    setPixelColor(xc + x, yc + y, r, g, b);
+    setPixelColor(xc - x, yc + y, r, g, b);
+    setPixelColor(xc + x, yc - y, r, g, b);
+    setPixelColor(xc - x, yc - y, r, g, b);
+    setPixelColor(xc + y, yc + x, r, g, b);
+    setPixelColor(xc - y, yc + x, r, g, b);
+    setPixelColor(xc + y, yc - x, r, g, b);
+    setPixelColor(xc - y, yc - x, r, g, b);
+}
+
+void drawCircleBresenham(int xc, int yc, int r_radius, float r, float g, float b) {
+    int x = 0;
+    int y = r_radius;
+    int d = 3 - 2 * r_radius; // Parámetro de decisión inicial
+
+    drawCircle8Points(xc, yc, x, y, r, g, b);
+
+    while (y >= x) {
+        x++;
+
+        // Chequear si el punto está dentro o fuera del círculo ideal
+        if (d > 0) {
+            y--;
+            d = d + 4 * (x - y) + 10;
+        }
+        else {
+            d = d + 4 * x + 6;
+        }
+
+        drawCircle8Points(xc, yc, x, y, r, g, b);
+    }
+}
+
 int main()
 {
 
@@ -99,7 +134,11 @@ int main()
     }
 
     // funcin de dibujado de línea desde el píxel (x1, y1) hasta el píxel (x2, y2)
-    drawLineBresenham(10, 10, 19, 19, 1.0f, 0.0f, 0.0f);
+    drawLineBresenham(40, 40, 20, 20, 1.0f, 0.0f, 0.0f);
+
+	// dibujo de circulo con Bresenham
+    // Dibuja un círculo centrado en (x1,y1) cono radio y
+    drawCircleBresenham(20, 20, 12, 1.0f, 0.0f, 0.0f);
 
     // --- MODIFICA AQUÍ CUALQUIER PÍXEL A TU GUSTO (Ejemplos) ---
     //setPixelColor(0, 0, 1.0f, 0.0f, 0.0f);   // Píxel esquina inferior izquierda -> Rojo
