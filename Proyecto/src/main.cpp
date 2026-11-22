@@ -2,168 +2,407 @@
 #include <GLFW/glfw3.h>
 #include <vector>
 #include <iostream>
+#include <queue> //colas para flood fill
+#include <cmath> //funciones matematicas 
+#include <stack> // undo 
+#include <array> // std::array para GridSnapshot
+
 #include "shaderClass.h"
 #include "VAO.h"
 #include "VBO.h"
 #include "EBO.h"
 
+// confiuracion de pixeles independientes 
+const int GRID_COLS = 80; // Número de columnas (eje X)
+const int GRID_ROWS = 80; // Número de filas (eje Y)
+
+struct PixelColor {
+    float r, g, b;
+};
+
+using GridSnapshot = std::array<std::array<PixelColor, GRID_COLS>, GRID_ROWS>;
+std::stack<GridSnapshot> undoStack;
+const size_t MAX_UNDO_STEPS = 50; // Límite de memoria  
+
+PixelColor pixelGrid[GRID_ROWS][GRID_COLS];
+
+// lista de herramientas usables 
+enum Tool { PINCEL, BORRADOR, LINEA, CIRCULO, RECTANGULO, RELLENO };
+Tool currentTool = PINCEL;
+
+const PixelColor BG_COLOR = { 0.2f, 0.2f, 0.2f }; // Color base del lienzo
+PixelColor currentColor = { 1.0f, 0.0f, 0.0f }; // Color activo por defecto
+
+int startX = -1, startY = -1; //posicion inicial de click por raton 
+bool isDrawing = false;
+bool gridNeedsUpdate = true;
+
+// FUNCIONES AUXILIARES Y DE LÓGICA
+
+void saveState() {
+    GridSnapshot snapshot;
+    for (int r = 0; r < GRID_ROWS; ++r) {
+        for (int c = 0; c < GRID_COLS; ++c) {
+            snapshot[r][c] = pixelGrid[r][c];
+        }
+    }
+
+    if (undoStack.size() >= MAX_UNDO_STEPS) {
+        // Reconstruye la pila sin el elemento más antiguo para respetar el límite
+        std::stack<GridSnapshot> temp;
+        std::vector<GridSnapshot> items;
+        while (!undoStack.empty()) {
+            items.push_back(undoStack.top());
+            undoStack.pop();
+        }
+        // items.back() es el más viejo; lo omitimos
+        for (size_t i = items.size() - 1; i > 0; --i) {
+            temp.push(items[i - 1]);
+        }
+        undoStack = std::move(temp);
+    }
+
+    undoStack.push(snapshot);
+}
+
+void undo() {
+    if (undoStack.empty()) {
+        std::cout << "No hay mas acciones para deshacer\n";
+        return;
+    }
+
+    GridSnapshot previous = undoStack.top();
+    undoStack.pop();
+
+    for (int r = 0; r < GRID_ROWS; ++r) {
+        for (int c = 0; c < GRID_COLS; ++c) {
+            pixelGrid[r][c] = previous[r][c];
+        }
+    }
+
+    gridNeedsUpdate = true;
+    std::cout << "Accion deshecha (Ctrl + Z)\n";
+}
+
+void setPixelColor(int col, int row, float r, float g, float b) {
+    if (col >= 0 && col < GRID_COLS && row >= 0 && row < GRID_ROWS) {
+        pixelGrid[row][col] = { r, g, b };
+        gridNeedsUpdate = true;
+    }
+}
+
+void screenToGrid(GLFWwindow* window, double mouseX, double mouseY, int& gridX, int& gridY) {
+    int width, height;
+    glfwGetWindowSize(window, &width, &height);
+
+    gridX = static_cast<int>((mouseX / width) * GRID_COLS);
+    gridY = static_cast<int>(((height - mouseY) / height) * GRID_ROWS); // Inversión de eje Y
+
+    if (gridX < 0) gridX = 0;
+    if (gridX >= GRID_COLS) gridX = GRID_COLS - 1;
+    if (gridY < 0) gridY = 0;
+    if (gridY >= GRID_ROWS) gridY = GRID_ROWS - 1;
+}
+
+// Algoritmo de Bresenham para Líneas con Parámetro de Decisión Pk
+void drawLineBresenham(int x0, int y0, int x1, int y1, float r, float g, float b) {
+    int dx = abs(x1 - x0);
+    int dy = abs(y1 - y0);
+    int sx = (x0 < x1) ? 1 : -1;
+    int sy = (y0 < y1) ? 1 : -1;
+
+    if (dx >= dy) {
+        int pk = 2 * dy - dx;
+        int x = x0, y = y0;
+
+        for (int i = 0; i <= dx; i++) {
+            setPixelColor(x, y, r, g, b);
+            x += sx;
+            if (pk >= 0) {
+                y += sy;
+                pk += 2 * (dy - dx);
+            }
+            else {
+                pk += 2 * dy;
+            }
+        }
+    }
+    else {
+        int pk = 2 * dx - dy;
+        int x = x0, y = y0;
+
+        for (int i = 0; i <= dy; i++) {
+            setPixelColor(x, y, r, g, b);
+            y += sy;
+            if (pk >= 0) {
+                x += sx;
+                pk += 2 * (dx - dy);
+            }
+            else {
+                pk += 2 * dx;
+            }
+        }
+    }
+}
+
+void drawCircle8Points(int xc, int yc, int x, int y, float r, float g, float b) {
+    setPixelColor(xc + x, yc + y, r, g, b);
+    setPixelColor(xc - x, yc + y, r, g, b);
+    setPixelColor(xc + x, yc - y, r, g, b);
+    setPixelColor(xc - x, yc - y, r, g, b);
+    setPixelColor(xc + y, yc + x, r, g, b);
+    setPixelColor(xc - y, yc + x, r, g, b);
+    setPixelColor(xc + y, yc - x, r, g, b);
+    setPixelColor(xc - y, yc - x, r, g, b);
+}
+
+void drawCircleBresenham(int xc, int yc, int r_radius, float r, float g, float b) {
+    int x = 0;
+    int y = r_radius;
+    int d = 3 - 2 * r_radius;
+
+    drawCircle8Points(xc, yc, x, y, r, g, b);
+
+    while (y >= x) {
+        x++;
+        if (d > 0) {
+            y--;
+            d = d + 4 * (x - y) + 10;
+        }
+        else {
+            d = d + 4 * x + 6;
+        }
+        drawCircle8Points(xc, yc, x, y, r, g, b);
+    }
+}
+
+void drawRectangle(int x0, int y0, int x1, int y1, float r, float g, float b) {
+
+    drawLineBresenham(x0, y0, x1, y0, r, g, b);
+    drawLineBresenham(x1, y0, x1, y1, r, g, b);
+    drawLineBresenham(x1, y1, x0, y1, r, g, b);
+    drawLineBresenham(x0, y1, x0, y0, r, g, b);
+}
+
+void floodFill(int startCol, int startRow, float fillColorR, float fillColorG, float fillColorB) {
+    if (startCol < 0 || startCol >= GRID_COLS || startRow < 0 || startRow >= GRID_ROWS) return;
+
+    PixelColor target = pixelGrid[startRow][startCol];
+    if (target.r == fillColorR && target.g == fillColorG && target.b == fillColorB) return;
+
+    std::queue<std::pair<int, int>> q;
+    q.push({ startCol, startRow });
+
+    while (!q.empty()) {
+        auto [col, row] = q.front();
+        q.pop();
+
+        if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) continue;
+
+        PixelColor current = pixelGrid[row][col];
+        if (current.r == target.r && current.g == target.g && current.b == target.b) {
+            setPixelColor(col, row, fillColorR, fillColorG, fillColorB);
+
+            q.push({ col + 1, row });
+            q.push({ col - 1, row });
+            q.push({ col, row + 1 });
+            q.push({ col, row - 1 });
+        }
+    }
+}
+
+void updateGridVertices(std::vector<GLfloat>& gridVertices) {
+    gridVertices.clear();
+    float stepX = 2.0f / GRID_COLS;
+    float stepY = 2.0f / GRID_ROWS;
+    float padding = 0.002f;
+
+    for (int row = 0; row < GRID_ROWS; ++row) {
+        for (int col = 0; col < GRID_COLS; ++col) {
+            float x = -1.0f + col * stepX + padding;
+            float y = -1.0f + row * stepY + padding;
+            float xNext = -1.0f + (col + 1) * stepX - padding;
+            float yNext = -1.0f + (row + 1) * stepY - padding;
+
+            float r = pixelGrid[row][col].r;
+            float g = pixelGrid[row][col].g;
+            float b = pixelGrid[row][col].b;
+
+            // Triángulo 1
+            gridVertices.push_back(x);     gridVertices.push_back(y);     gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
+            gridVertices.push_back(xNext); gridVertices.push_back(y);     gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
+            gridVertices.push_back(xNext); gridVertices.push_back(yNext); gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
+
+            // Triángulo 2
+            gridVertices.push_back(x);     gridVertices.push_back(y);     gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
+            gridVertices.push_back(xNext); gridVertices.push_back(yNext); gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
+            gridVertices.push_back(x);     gridVertices.push_back(yNext); gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
+        }
+    }
+}
+
+// CALLBACKS DE ENTRADA (MOUSE Y TECLADO)
+
+void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
+    glViewport(0, 0, width, height);
+}
+
+void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
+    if (button == GLFW_MOUSE_BUTTON_LEFT) {
+        double xpos, ypos;
+        glfwGetCursorPos(window, &xpos, &ypos);
+
+        int col, row;
+        screenToGrid(window, xpos, ypos, col, row);
+
+        if (action == GLFW_PRESS) {
+            saveState();
+            startX = col;
+            startY = row;
+            isDrawing = true;
+
+            if (currentTool == PINCEL) {
+                setPixelColor(col, row, currentColor.r, currentColor.g, currentColor.b);
+            }
+            else if (currentTool == BORRADOR) {
+                setPixelColor(col, row, BG_COLOR.r, BG_COLOR.g, BG_COLOR.b); // Pinta con el gris base de fondo
+            }
+            else if (currentTool == RELLENO) {
+                floodFill(col, row, currentColor.r, currentColor.g, currentColor.b);
+            }
+        }
+        else if (action == GLFW_RELEASE && isDrawing) {
+            isDrawing = false;
+            int endX = col, endY = row;
+
+            if (currentTool == LINEA) {
+                drawLineBresenham(startX, startY, endX, endY, currentColor.r, currentColor.g, currentColor.b);
+            }
+            else if (currentTool == RECTANGULO) {
+                drawRectangle(startX, startY, endX, endY, currentColor.r, currentColor.g, currentColor.b);
+            }
+            else if (currentTool == CIRCULO) {
+                int radius = static_cast<int>(std::round(std::sqrt(std::pow(endX - startX, 2) + std::pow(endY - startY, 2))));
+                drawCircleBresenham(startX, startY, radius, currentColor.r, currentColor.g, currentColor.b);
+            }
+        }
+    }
+}
+
+void cursor_position_callback(GLFWwindow* window, double xpos, double ypos) {
+    if (isDrawing) {
+        int col, row;
+        screenToGrid(window, xpos, ypos, col, row);
+
+        if (currentTool == PINCEL) {
+            setPixelColor(col, row, currentColor.r, currentColor.g, currentColor.b);
+        }
+        else if (currentTool == BORRADOR) {
+            setPixelColor(col, row, BG_COLOR.r, BG_COLOR.g, BG_COLOR.b);
+        }
+    }
+}
+
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    if (action == GLFW_PRESS) {
+        if (key == GLFW_KEY_Z && (mods & GLFW_MOD_CONTROL)) {
+            undo();
+            return;
+        }
+
+        if (key == GLFW_KEY_P) { currentTool = PINCEL; std::cout << "Herramienta: Pincel\n"; }
+        if (key == GLFW_KEY_L) { currentTool = LINEA; std::cout << "Herramienta: Linea\n"; }
+        if (key == GLFW_KEY_C) { currentTool = CIRCULO; std::cout << "Herramienta: Circulo\n"; }
+        if (key == GLFW_KEY_R) { currentTool = RECTANGULO; std::cout << "Herramienta: Rectangulo\n"; }
+        if (key == GLFW_KEY_F) { currentTool = RELLENO; std::cout << "Herramienta: Balde Relleno\n"; }
+        if (key == GLFW_KEY_E) { currentTool = BORRADOR; std::cout << "Herramienta: Borrador\n"; }
+
+        if (key == GLFW_KEY_1) { currentColor = { 1.0f, 0.0f, 0.0f }; std::cout << "Color: Rojo\n"; }
+        if (key == GLFW_KEY_2) { currentColor = { 0.0f, 1.0f, 0.0f }; std::cout << "Color: Verde\n"; }
+        if (key == GLFW_KEY_3) { currentColor = { 0.0f, 0.0f, 1.0f }; std::cout << "Color: Azul\n"; }
+        if (key == GLFW_KEY_4) { currentColor = { 1.0f, 1.0f, 1.0f }; std::cout << "Color: Blanco\n"; }
+    }
+}
+
+
+// (MAIN)
+
+
 int main()
 {
-
-    // Inicializar GLFW
     glfwInit();
-
-    // especificar version de OpenGL
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    // Ventana y sus parametros
-    GLFWwindow* window = glfwCreateWindow(800, 800, "Mi primer ventana", NULL, NULL);
-
-
-    //check de error si la ventana falla
+    GLFWwindow* window = glfwCreateWindow(800, 800, "Paint Basico - OpenGL", NULL, NULL);
     if (window == NULL) {
-        std::cout << "Error a crear la ventana GLFW ";
-        std::cout << std::endl;
+        std::cout << "Error al crear la ventana GLFW\n";
         glfwTerminate();
         return -1;
     }
 
     glfwMakeContextCurrent(window);
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    glfwSetMouseButtonCallback(window, mouse_button_callback);
+    glfwSetCursorPosCallback(window, cursor_position_callback);
+    glfwSetKeyCallback(window, key_callback);
 
-    gladLoadGL(); //Carga GLAD y configura OpenGl
+    gladLoadGL();
+    glViewport(0, 0, 800, 800);
 
-    glViewport(0, 0, 800, 800); //area de renderizado de la ventana x=0, y=0, a x=800, y=800 
-
-    // --- GENERACIÓN DINÁMICA DE LA GRILLA ---
-    const float STEP = 0.1f; // Medida mínima del cuadrado (0.1 en espacio NDC [-1, 1])
-    std::vector<GLfloat> gridVertices;
-
-    // OPCIÓN 1: LÍNEAS HORIZONTALES Y VERTICALES CONTINUAS
-    for (float pos = -1.0f; pos <= 1.0f + 0.0001f; pos += STEP)
-    {
-        // Línea Vertical (x constante, va de y=-1 a y=1)
-        gridVertices.push_back(pos);   gridVertices.push_back(-1.0f); gridVertices.push_back(0.0f);   gridVertices.push_back(0.4f); gridVertices.push_back(0.4f); gridVertices.push_back(0.4f);
-        gridVertices.push_back(pos);   gridVertices.push_back(1.0f);  gridVertices.push_back(0.0f);   gridVertices.push_back(0.4f); gridVertices.push_back(0.4f); gridVertices.push_back(0.4f);
-
-        // Línea Horizontal (y constante, va de x=-1 a x=1)
-        gridVertices.push_back(-1.0f); gridVertices.push_back(pos);   gridVertices.push_back(0.0f);   gridVertices.push_back(0.4f); gridVertices.push_back(0.4f); gridVertices.push_back(0.4f);
-        gridVertices.push_back(1.0f);  gridVertices.push_back(pos);   gridVertices.push_back(0.0f);   gridVertices.push_back(0.4f); gridVertices.push_back(0.4f); gridVertices.push_back(0.4f);
-    }
-
-    /*
-    // OPCIÓN 2: GENERACIÓN CUADRADO POR CUADRADO INDEPENDIENTE
-    for (float x = -1.0f; x < 1.0f - 0.0001f; x += STEP)
-    {
-        for (float y = -1.0f; y < 1.0f - 0.0001f; y += STEP)
-        {
-            float xNext = x + STEP;
-            float yNext = y + STEP;
-            float r = 0.4f, g = 0.4f, b = 0.4f;
-
-            // Lado Inferior
-            gridVertices.push_back(x);     gridVertices.push_back(y);     gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
-            gridVertices.push_back(xNext); gridVertices.push_back(y);     gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
-
-            // Lado Derecho
-            gridVertices.push_back(xNext); gridVertices.push_back(y);     gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
-            gridVertices.push_back(xNext); gridVertices.push_back(yNext); gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
-
-            // Lado Superior
-            gridVertices.push_back(xNext); gridVertices.push_back(yNext); gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
-            gridVertices.push_back(x);     gridVertices.push_back(yNext); gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
-
-            // Lado Izquierdo
-            gridVertices.push_back(x);     gridVertices.push_back(yNext); gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
-            gridVertices.push_back(x);     gridVertices.push_back(y);     gridVertices.push_back(0.0f); gridVertices.push_back(r); gridVertices.push_back(g); gridVertices.push_back(b);
+    // Inicializar matriz a gris oscuro
+    for (int r = 0; r < GRID_ROWS; ++r) {
+        for (int c = 0; c < GRID_COLS; ++c) {
+            pixelGrid[r][c] = BG_COLOR;
         }
     }
-    */
 
-
-    //GLfloat vertices[] = {  //matriz de vertices con posicion -1<< x,y <<+1
-        //                 COORDENADAS                /          COLORES
-           // CUADRADO
-              //-0.5f,  -0.5f * float(sqrt(3)) / 2,      0.0f,  0.8f, 0.3f,  0.02f, //esquina izquierda baja
-              //0.5f,  -0.5f * float(sqrt(3)) / 2,      0.0f,  0.8f, 0.3f,  0.02f, //esquina derecha baja
-              //-0.5f,  0.5f * float(sqrt(3)) / 2,      0.0f,  0.8f, 0.3f,  0.02f, //esquina izquierda alta
-              //0.5f,  0.5f * float(sqrt(3)) / 2,      0.0f,  0.8f, 0.3f,  0.02f, //esquina derecha alta
-
-         //TRIANGULO
-           //-0.5f, -0.5f * float(sqrt(3)) * 1 / 3, 0.0f,     0.8f, 0.3f,  0.02f, 
-            //0.5f, -0.5f * float(sqrt(3)) * 1 / 3, 0.0f,     0.8f, 0.3f,  0.02f,
-            //0.0f,  0.5f * float(sqrt(3)) * 2 / 3, 0.0f,     1.0f, 0.6f,  0.32f,
-           //-0.25f, 0.5f * float(sqrt(3)) * 1 / 6, 0.0f,     0.9f, 0.45f, 0.17f,
-            //0.25f, 0.5f * float(sqrt(3)) * 1 / 6, 0.0f,     0.9f, 0.45f, 0.17f,
-            //0.0f, -0.5f * float(sqrt(3)) * 1 / 3, 0.0f,     0.8f, 0.3f,  0.02f
-
-
-    //};
-
-    //GLuint indices[] = {
-         //0, 3, 5, //triangulo izquierdo
-         //3, 2, 4, // triangulo derecho
-         //5, 4, 1 // triangulo superior
-
-
-         //0, 1, 2, //cuadrado
-         //1, 3, 2  //cuadrado
-
-    //};
+    std::vector<GLfloat> gridVertices;
+    updateGridVertices(gridVertices);
 
     Shader shaderProgram("Shaders/default.vert", "Shaders/default.frag");
 
-
-    // Genera un objeto de matriz de vértices (VAO) y lo vincula
     VAO VAO1;
     VAO1.Bind();
-
-    // Genera un VBO con el vector dinámico de la grilla
     VBO VBO1(gridVertices.data(), gridVertices.size() * sizeof(GLfloat));
-
-    // Genera un objeto de búfer de vértices y lo vincula a los vértices
-    //VBO VBO1(vertices, sizeof(vertices));
-    // Genera un objeto de búfer de elementos y lo vincula a los índices.
-    //EBO EBO1(indices, sizeof(indices));
-
-    // Vincula atributos de VBO, como coordenadas y colores, al VAO.
     VAO1.LinkAttrib(VBO1, 0, 3, GL_FLOAT, 6 * sizeof(float), (void*)0);
     VAO1.LinkAttrib(VBO1, 1, 3, GL_FLOAT, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-    //  Desune todas para evitar modificarlas accidentalmente.
     VAO1.Unbind();
     VBO1.Unbind();
-    //EBO1.Unbind();
 
-
+    std::cout << "-------------------------------------------\n";
+    std::cout << "CONTROLES POR TECLADO ACTIVOS:\n";
+    std::cout << "[P] Pincel | [L] Linea | [C] Circulo | [R] Rectangulo | [F] Balde | [E] Borrador\n";
+    std::cout << "[1] Rojo   | [2] Verde | [3] Azul    | [4] Blanco   | [Ctrl+Z] Deshacer\n";
+    std::cout << "-------------------------------------------\n";
 
     while (!glfwWindowShouldClose(window))
     {
-        // color de fondo
-        glClearColor(0.07f, 0.13f, 0.17f, 1.0f);
-        // limpia el back buffer y le da un color
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
-        // le dice al programa de opengl que shader usar
+
         shaderProgram.Activate();
-        // libera el VAO para wue opengl sepa que debe usarlo
         VAO1.Bind();
-        // Dibujar primitivas, número de índices, tipo de datos de los índices, índice de los índices
-        //glDrawElements(GL_TRIANGLES, 9, GL_UNSIGNED_INT, 0); //(triangulos)
-        glDrawArrays(GL_LINES, 0, gridVertices.size() / 6);
-        // cambia el back con el front buffer
+
+        if (gridNeedsUpdate) {
+            updateGridVertices(gridVertices);
+            VBO1.Bind();
+            glBufferSubData(GL_ARRAY_BUFFER, 0, gridVertices.size() * sizeof(GLfloat), gridVertices.data());
+            gridNeedsUpdate = false;
+        }
+
+        glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(gridVertices.size() / 6));
+
         glfwSwapBuffers(window);
-        // encargado de los eventos del GLWF
         glfwPollEvents();
     }
 
-    // elimina todos los objetos creados
     VAO1.Delete();
     VBO1.Delete();
-    //EBO1.Delete();
     shaderProgram.Delete();
-    // Cierre la ventana antes de finalizar el programa.
     glfwDestroyWindow(window);
-    // Finaliza GLFW antes de terminar el programa.
     glfwTerminate();
+
     return 0;
 }
