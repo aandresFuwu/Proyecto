@@ -1,1 +1,10 @@
 .out/
+
+.vs/
+Proyecto/.vs/
+**/out/
+*.exe
+*.pdb
+*.ilk
+*.obj
+*.ini

@@ -1,9 +1,15 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+
+#include <algorithm>
+#include <fstream> //guardado
 #include <vector>
 #include <iostream>
 #include <queue> //colas para flood fill
-#include <cmath> //funciones matematicas 
+#include <cmath> //funciones matematicas x
 #include <stack> // undo 
 #include <array> // std::array para GridSnapshot
 
@@ -13,8 +19,8 @@
 #include "EBO.h"
 
 // confiuracion de pixeles independientes 
-const int GRID_COLS = 80; // Número de columnas (eje X)
-const int GRID_ROWS = 80; // Número de filas (eje Y)
+const int GRID_COLS = 120; // Número de columnas (eje X)
+const int GRID_ROWS = 120; // Número de filas (eje Y)
 
 struct PixelColor {
     float r, g, b;
@@ -27,11 +33,12 @@ const size_t MAX_UNDO_STEPS = 50; // Límite de memoria
 PixelColor pixelGrid[GRID_ROWS][GRID_COLS];
 
 // lista de herramientas usables 
-enum Tool { PINCEL, BORRADOR, LINEA, CIRCULO, RECTANGULO, RELLENO };
+enum Tool { PINCEL, BORRADOR, LINEA, CIRCULO, RECTANGULO, TRIANGULO, RELLENO };
 Tool currentTool = PINCEL;
 
-const PixelColor BG_COLOR = { 0.2f, 0.2f, 0.2f }; // Color base del lienzo
-PixelColor currentColor = { 1.0f, 0.0f, 0.0f }; // Color activo por defecto
+const PixelColor BG_COLOR = { 1.0f, 1.0f, 1.0f }; // Color base del lienzo
+// PixelColor currentColor = { 1.0f, 0.0f, 0.0f }; // Color activo por defecto (sin dear imgui)
+float activeColor[3] = { 0.0f, 0.0f, 0.0f }; // negro por defecto
 
 int startX = -1, startY = -1; //posicion inicial de click por raton 
 bool isDrawing = false;
@@ -40,7 +47,7 @@ bool gridNeedsUpdate = true;
 // FUNCIONES AUXILIARES Y DE LÓGICA
 
 void saveState() {
-    GridSnapshot snapshot;
+    GridSnapshot snapshot{};
     for (int r = 0; r < GRID_ROWS; ++r) {
         for (int c = 0; c < GRID_COLS; ++c) {
             snapshot[r][c] = pixelGrid[r][c];
@@ -184,6 +191,16 @@ void drawRectangle(int x0, int y0, int x1, int y1, float r, float g, float b) {
     drawLineBresenham(x0, y1, x0, y0, r, g, b);
 }
 
+void drawTriangle(int x0, int y0, int x1, int y1, float r, float g, float b) {
+    int dx = abs(x1 - x0);
+    int leftX = x0 - dx;
+    int rightX = x0 + dx;
+
+    drawLineBresenham(leftX, y0, rightX, y0, r, g, b); // Base
+    drawLineBresenham(leftX, y0, x0, y1, r, g, b);     // Lado izquierdo
+    drawLineBresenham(rightX, y0, x0, y1, r, g, b);    // Lado derecho
+}
+
 void floodFill(int startCol, int startRow, float fillColorR, float fillColorG, float fillColorB) {
     if (startCol < 0 || startCol >= GRID_COLS || startRow < 0 || startRow >= GRID_ROWS) return;
 
@@ -215,7 +232,7 @@ void updateGridVertices(std::vector<GLfloat>& gridVertices) {
     gridVertices.clear();
     float stepX = 2.0f / GRID_COLS;
     float stepY = 2.0f / GRID_ROWS;
-    float padding = 0.002f;
+    float padding = 0.0f; //(encogimiento de pixeles para ver o no la grilla)
 
     for (int row = 0; row < GRID_ROWS; ++row) {
         for (int col = 0; col < GRID_COLS; ++col) {
@@ -248,6 +265,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
 }
 
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
+    if (ImGui::GetIO().WantCaptureMouse) return;
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         double xpos, ypos;
         glfwGetCursorPos(window, &xpos, &ypos);
@@ -262,13 +280,13 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
             isDrawing = true;
 
             if (currentTool == PINCEL) {
-                setPixelColor(col, row, currentColor.r, currentColor.g, currentColor.b);
+                setPixelColor(col, row, activeColor[0], activeColor[1], activeColor[2]);
             }
             else if (currentTool == BORRADOR) {
                 setPixelColor(col, row, BG_COLOR.r, BG_COLOR.g, BG_COLOR.b); // Pinta con el gris base de fondo
             }
             else if (currentTool == RELLENO) {
-                floodFill(col, row, currentColor.r, currentColor.g, currentColor.b);
+                floodFill(col, row, activeColor[0], activeColor[1], activeColor[2]);
             }
         }
         else if (action == GLFW_RELEASE && isDrawing) {
@@ -276,26 +294,30 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
             int endX = col, endY = row;
 
             if (currentTool == LINEA) {
-                drawLineBresenham(startX, startY, endX, endY, currentColor.r, currentColor.g, currentColor.b);
+                drawLineBresenham(startX, startY, endX, endY, activeColor[0], activeColor[1], activeColor[2]);
             }
             else if (currentTool == RECTANGULO) {
-                drawRectangle(startX, startY, endX, endY, currentColor.r, currentColor.g, currentColor.b);
+                drawRectangle(startX, startY, endX, endY, activeColor[0], activeColor[1], activeColor[2]);
+            }
+            else if (currentTool == TRIANGULO) {
+                drawTriangle(startX, startY, endX, endY, activeColor[0], activeColor[1], activeColor[2]);
             }
             else if (currentTool == CIRCULO) {
                 int radius = static_cast<int>(std::round(std::sqrt(std::pow(endX - startX, 2) + std::pow(endY - startY, 2))));
-                drawCircleBresenham(startX, startY, radius, currentColor.r, currentColor.g, currentColor.b);
+                drawCircleBresenham(startX, startY, radius, activeColor[0], activeColor[1], activeColor[2]);
             }
         }
     }
 }
 
 void cursor_position_callback(GLFWwindow* window, double xpos, double ypos) {
+    if (ImGui::GetIO().WantCaptureMouse) return;
     if (isDrawing) {
         int col, row;
         screenToGrid(window, xpos, ypos, col, row);
 
         if (currentTool == PINCEL) {
-            setPixelColor(col, row, currentColor.r, currentColor.g, currentColor.b);
+            setPixelColor(col, row, activeColor[0], activeColor[1], activeColor[2]);
         }
         else if (currentTool == BORRADOR) {
             setPixelColor(col, row, BG_COLOR.r, BG_COLOR.g, BG_COLOR.b);
@@ -304,6 +326,7 @@ void cursor_position_callback(GLFWwindow* window, double xpos, double ypos) {
 }
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    if (ImGui::GetIO().WantCaptureKeyboard) return;
     if (action == GLFW_PRESS) {
         if (key == GLFW_KEY_Z && (mods & GLFW_MOD_CONTROL)) {
             undo();
@@ -314,14 +337,43 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
         if (key == GLFW_KEY_L) { currentTool = LINEA; std::cout << "Herramienta: Linea\n"; }
         if (key == GLFW_KEY_C) { currentTool = CIRCULO; std::cout << "Herramienta: Circulo\n"; }
         if (key == GLFW_KEY_R) { currentTool = RECTANGULO; std::cout << "Herramienta: Rectangulo\n"; }
+        if (key == GLFW_KEY_T) { currentTool = TRIANGULO; std::cout << "Herramienta: Triangulo\n"; }
         if (key == GLFW_KEY_F) { currentTool = RELLENO; std::cout << "Herramienta: Balde Relleno\n"; }
         if (key == GLFW_KEY_E) { currentTool = BORRADOR; std::cout << "Herramienta: Borrador\n"; }
 
-        if (key == GLFW_KEY_1) { currentColor = { 1.0f, 0.0f, 0.0f }; std::cout << "Color: Rojo\n"; }
-        if (key == GLFW_KEY_2) { currentColor = { 0.0f, 1.0f, 0.0f }; std::cout << "Color: Verde\n"; }
-        if (key == GLFW_KEY_3) { currentColor = { 0.0f, 0.0f, 1.0f }; std::cout << "Color: Azul\n"; }
-        if (key == GLFW_KEY_4) { currentColor = { 1.0f, 1.0f, 1.0f }; std::cout << "Color: Blanco\n"; }
+        //if (key == GLFW_KEY_1) { currentColor = { 1.0f, 0.0f, 0.0f }; std::cout << "Color: Rojo\n"; }
+        //if (key == GLFW_KEY_2) { currentColor = { 0.0f, 1.0f, 0.0f }; std::cout << "Color: Verde\n"; }
+        //if (key == GLFW_KEY_3) { currentColor = { 0.0f, 0.0f, 1.0f }; std::cout << "Color: Azul\n"; }
+        //if (key == GLFW_KEY_4) { currentColor = { 1.0f, 1.0f, 1.0f }; std::cout << "Color: Blanco\n"; }
+        
+    
     }
+
+}
+
+void saveCanvasToPPM(const std::string& filename = "dibujo.ppm") {
+    std::ofstream out(filename);
+    if (!out.is_open()) {
+        std::cout << "Error al guardar la imagen\n";
+        return;
+    }
+
+    // Cabecera PPM: formato P3, ancho, alto, valor máximo por canal
+    out << "P3\n" << GRID_COLS << " " << GRID_ROWS << "\n255\n";
+
+    // En pixelGrid la fila 0 está abajo (por la inversión del eje Y),
+    // así que recorremos de arriba hacia abajo para que la imagen salga derecha
+    for (int r = GRID_ROWS - 1; r >= 0; --r) {
+        for (int c = 0; c < GRID_COLS; ++c) {
+            int ir = static_cast<int>(std::clamp(pixelGrid[r][c].r, 0.0f, 1.0f) * 255.0f);
+            int ig = static_cast<int>(std::clamp(pixelGrid[r][c].g, 0.0f, 1.0f) * 255.0f);
+            int ib = static_cast<int>(std::clamp(pixelGrid[r][c].b, 0.0f, 1.0f) * 255.0f);
+            out << ir << " " << ig << " " << ib << "\n";
+        }
+    }
+
+    out.close();
+    std::cout << "Imagen guardada en " << filename << "\n";
 }
 
 
@@ -351,6 +403,17 @@ int main()
     gladLoadGL();
     glViewport(0, 0, 800, 800);
 
+    //inicializacion de dearimgui
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    ImGui::StyleColorsDark();
+
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 330");
+
+
     // Inicializar matriz a gris oscuro
     for (int r = 0; r < GRID_ROWS; ++r) {
         for (int c = 0; c < GRID_COLS; ++c) {
@@ -379,6 +442,34 @@ int main()
 
     while (!glfwWindowShouldClose(window))
     {
+        glfwPollEvents();
+
+        // 1. Iniciar frame de ImGui y construir el panel
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        ImGui::Begin("Herramientas");
+        if (ImGui::RadioButton("Pincel (P)", currentTool == PINCEL)) currentTool = PINCEL;
+        if (ImGui::RadioButton("Borrador (E)", currentTool == BORRADOR)) currentTool = BORRADOR;
+        if (ImGui::RadioButton("Linea (L)", currentTool == LINEA)) currentTool = LINEA;
+        if (ImGui::RadioButton("Circulo (C)", currentTool == CIRCULO)) currentTool = CIRCULO;
+        if (ImGui::RadioButton("Rectangulo (R)", currentTool == RECTANGULO)) currentTool = RECTANGULO;
+        if (ImGui::RadioButton("Triangulo (T)", currentTool == TRIANGULO)) currentTool = TRIANGULO;
+        if (ImGui::RadioButton("Balde Relleno (F)", currentTool == RELLENO)) currentTool = RELLENO;
+
+
+
+        ImGui::Separator();
+        ImGui::ColorPicker3("Color", activeColor);
+
+        ImGui::Separator();
+        if (ImGui::Button("Deshacer (Ctrl + Z)")) {
+            undo();
+        }
+        ImGui::End();
+
+        // 2. Limpiar y dibujar la grilla en OpenGL
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
@@ -394,9 +485,18 @@ int main()
 
         glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(gridVertices.size() / 6));
 
+
+        // 3. Finalizar y dibujar ImGui encima de la grilla
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        // 4. Mostrar el frame completo en pantalla
         glfwSwapBuffers(window);
-        glfwPollEvents();
     }
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
 
     VAO1.Delete();
     VBO1.Delete();

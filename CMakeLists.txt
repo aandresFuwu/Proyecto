@@ -11,6 +11,8 @@ add_executable(OpenGLProject
     src/VAO.cpp
     src/VBO.cpp
     src/EBO.cpp
+    
+
 )
 
 target_include_directories(OpenGLProject PRIVATE
