@@ -20,8 +20,6 @@ Aplicación interactiva de dibujo 2D basada en una grilla lógica de **120x120**
   - **Balde de relleno:** Algoritmo `floodFill` iterativo con cola (`std::queue`) sobre celdas adyacentes del mismo color inicial.
 - **Selector de color RGB:** Integrado con `ImGui::ColorPicker3` vinculado a `activeColor[3]`.
 - **Historial de deshacer (`undo`):** Pila de estados (`std::stack<GridSnapshot>`) con límite de **50 pasos** (`MAX_UNDO_STEPS`) accesible desde el botón de la interfaz o con `Ctrl + Z`.
-- **Exportación a imagen PPM:** Función `saveCanvasToPPM` que convierte la grilla RGB (`[0.0f, 1.0f]` a `[0, 255]`) y la guarda en formato de texto plano `.ppm` (`P3`) orientada de arriba hacia abajo.
-
 ---
 
 ## Estructura del proyecto
