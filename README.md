@@ -21,6 +21,20 @@ Aplicación interactiva de dibujo 2D basada en una grilla lógica de **120x120**
 - **Selector de color RGB:** Integrado con `ImGui::ColorPicker3` vinculado a `activeColor[3]`.
 - **Historial de deshacer (`undo`):** Pila de estados (`std::stack<GridSnapshot>`) con límite de **50 pasos** (`MAX_UNDO_STEPS`) accesible desde el botón de la interfaz o con `Ctrl + Z`.
 ---
+## Atajos y controles
+
+| Tecla / Entrada | Acción | Estado / Notas |
+| :--- | :--- | :--- |
+| `P` | Seleccionar herramienta **Pincel** | Activa |
+| `L` | Seleccionar herramienta **Línea** | Activa |
+| `C` | Seleccionar herramienta **Círculo** | Activa |
+| `R` | Seleccionar herramienta **Rectángulo** | Activa |
+| `T` | Seleccionar herramienta **Triángulo** | Activa |
+| `F` | Seleccionar herramienta **Balde Relleno** | Activa |
+| `E` | Seleccionar herramienta **Borrador** | Activa |
+| `Ctrl + Z` | Deshacer último cambio (`undo`) | Activa (hasta 50 pasos; se omite si Dear ImGui captura el teclado) |
+| Clic izquierdo / Arrastrar | Aplicar herramienta activa | Activa (se ignora si el cursor está sobre Dear ImGui) |
+| `1` – `4` | Colores rápidos (Rojo, Verde, Azul, Blanco) | Comentadas en `main.cpp` |
 
 ## Estructura del proyecto
 
