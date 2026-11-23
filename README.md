@@ -53,7 +53,4 @@ Aplicación interactiva de dibujo 2D basada en una grilla lógica de **120x120**
 * **CMake** (recomendado `CMAKE_CXX_STANDARD 17`).
 * **GLFW**, **GLAD** y **Dear ImGui** (incluyendo `imgui_impl_glfw.cpp` e `imgui_impl_opengl3.cpp`).
 
-### Compilar con CMake
-```bash
-cmake -B build -DCMAKE_CXX_STANDARD=17
-cmake --build build --config Release
+
