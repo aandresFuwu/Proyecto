@@ -3,7 +3,7 @@
 **Autor:** Andres Felipe Algarra Jimenez
 **Codigo:** 6014444
 
-Aplicación interactiva de dibujo 2D basada en una grilla lógica de **120x120** celdas renderizada en **OpenGL 3.3 Core Profile**, con panel de herramientas en **Dear ImGui**, historial de deshacer (`Ctrl + Z` / botón) y exportación de imagen en formato **PPM (`P3`)**.
+Aplicación interactiva de dibujo 2D basada en una grilla lógica de **120x120** celdas renderizada en **OpenGL 3.3 Core Profile**, con panel de herramientas en **Dear ImGui**, historial de deshacer (`Ctrl + Z` / botón)
 
 ---
 
